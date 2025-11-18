@@ -7,18 +7,14 @@ import { PieceBank } from './components/PieceBank';
 import { GameInstructions } from './components/GameInstructions';
 
 const generateAllPieces = (): PieceType[] => {
-  const pieces: PieceType[] = [];
-  for (let i = 0; i < 16; i++) {
-    pieces.push({
-      id: i,
-      isTall: (i & 8) === 8,
-      isBlack: (i & 4) === 4,
-      isSquare: (i & 2) === 2,
-      isHollow: (i & 1) === 1,
-      number: 0, // Will be assigned later
-    });
-  }
-  return pieces;
+  return Array.from({ length: 16 }, (_, i) => ({
+    id: i,
+    isTall: (i & 8) === 8,
+    isBlack: (i & 4) === 4,
+    isSquare: (i & 2) === 2,
+    isHollow: (i & 1) === 1,
+    number: 0, // Assigned after shuffling
+  }));
 };
 
 const shuffleArray = <T,>(array: T[]): T[] => {
@@ -29,6 +25,9 @@ const shuffleArray = <T,>(array: T[]): T[] => {
   }
   return newArray;
 };
+
+const createEmptyBoard = (): BoardState =>
+  Array.from({ length: BOARD_SIZE }, () => Array.from({ length: BOARD_SIZE }, () => null));
 
 const App: React.FC = () => {
   const [allPieces, setAllPieces] = useState<PieceType[]>([]);
@@ -46,12 +45,13 @@ const App: React.FC = () => {
     const piecesWithNumbers = initialPieces.map((p, i) => ({ ...p, number: shuffledNumbers[i] }));
     
     setAllPieces(piecesWithNumbers);
-    setBoard(Array(BOARD_SIZE).fill(null).map(() => Array(BOARD_SIZE).fill(null)));
+    setBoard(createEmptyBoard());
     setAvailablePieces(piecesWithNumbers);
     setSelectedPiece(null);
     setCurrentPlayer('Player 1');
     setGamePhase('CHOOSING');
     setWinner(null);
+    setGameMessage('Player 1, choose a piece for Player 2.');
   }, []);
 
   useEffect(() => {
@@ -89,6 +89,10 @@ const App: React.FC = () => {
 
   const handleCellClick = (row: number, col: number) => {
     if (gamePhase !== 'PLACING' || !selectedPiece || winner) return;
+    if (board[row][col]) {
+      setGameMessage('That square is already occupied. Choose an empty one.');
+      return;
+    }
 
     const newBoard = board.map(r => [...r]);
     newBoard[row][col] = selectedPiece;
