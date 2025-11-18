@@ -1,0 +1,5 @@
+{
+  "name": "Quarto: Spanish Numbers Edition",
+  "description": "A digital version of the board game Quarto, with a language-learning twist. Players must select pieces for their opponents by calling out a randomly assigned Spanish number. Each piece has an audio button to help players practice pronunciation. The goal is to get four pieces in a row that share a common attribute.",
+  "requestFramePermissions": []
+}
