@@ -71,6 +71,10 @@
 
                 <!-- Tablero -->
                 <section class="board-section">
+                    <div id="timerBar" class="timer-bar hidden">
+                        <div id="timerFill" class="timer-fill"></div>
+                        <span id="timerText" class="timer-text">30s</span>
+                    </div>
                     <div id="gameBoard" class="board"></div>
                 </section>
             </div>
@@ -105,6 +109,31 @@
                         <option value="9999">0-9999 (Hard)</option>
                     </select>
                 </div>
+                <div class="settings-group">
+                    <label for="timerDuration">Turn Timer:</label>
+                    <select id="timerDuration" class="settings-select">
+                        <option value="0">No Timer</option>
+                        <option value="15">15 seconds</option>
+                        <option value="30">30 seconds</option>
+                        <option value="45">45 seconds</option>
+                        <option value="60">60 seconds</option>
+                    </select>
+                </div>
+                <div class="settings-group">
+                    <label>Game Modes:</label>
+                    <div class="settings-checkboxes">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="mathMode">
+                            <span>🧮 Math Operations</span>
+                            <span class="mode-desc">Show math operations instead of plain numbers</span>
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="spyMode">
+                            <span>🕵️ Spy Mode</span>
+                            <span class="mode-desc">Numbers disappear after 3 seconds</span>
+                        </label>
+                    </div>
+                </div>
                 <div class="settings-buttons">
                     <button id="startGameButton" class="btn-primary">Start Game</button>
                     <button id="cancelSettingsButton" class="btn-secondary">Cancel</button>
@@ -122,6 +151,7 @@
         </div>
     </div>
 
+    <div id="numberTooltip" class="number-tooltip"></div>
     <script src="game.js"></script>
 </body>
 </html>

@@ -14,9 +14,13 @@ const moveHistory = [];
 
 // Configuración del juego
 const gameConfig = {
-    boardSize: 4, // 3 o 4
-    numberRange: 99, // 99, 999, o 9999
-    winLength: 4 // 3 o 4
+    boardSize: 4,
+    numberRange: 99,
+    winLength: 4,
+    mathMode: false,
+    spyMode: false,
+    timerEnabled: false,
+    timerDuration: 30
 };
 
 // Audio context para efectos de sonido
@@ -53,6 +57,11 @@ function playPlaceSound() {
 // Números aleatorios para fichas y casillas
 let pieceNumbers = [];
 let cellNumbers = [];
+let pieceMathExpressions = [];
+let cellMathExpressions = [];
+let timerInterval = null;
+let timerRemaining = 0;
+let spyTimeout = null;
 
 // Características de las fichas (4 características binarias = 16 fichas únicas)
 // tall/short, dark/light, square/round, solid/hollow
@@ -106,6 +115,17 @@ function initGame() {
     renderBoard();
     updateGameInfo();
     hideCharacteristics();
+
+    // Timer
+    stopTimer();
+    const timerBar = document.getElementById('timerBar');
+    if (timerBar) {
+        timerBar.classList.toggle('hidden', !gameConfig.timerEnabled);
+    }
+    startTimer();
+
+    // Spy mode
+    startSpyReveal();
 }
 
 // Generar números aleatorios únicos
@@ -123,6 +143,180 @@ function generateRandomNumbers() {
     }
     pieceNumbers = numbers.slice(0, totalPieces);
     cellNumbers = numbers.slice(totalPieces, totalNumbers);
+    generateMathExpressions();
+}
+
+// Convertir número a texto en español
+function numberToSpanish(n) {
+    if (n === 0) return 'cero';
+
+    const unidades = ['', 'uno', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve',
+        'diez', 'once', 'doce', 'trece', 'catorce', 'quince', 'dieciséis', 'diecisiete',
+        'dieciocho', 'diecinueve', 'veinte', 'veintiuno', 'veintidós', 'veintitrés',
+        'veinticuatro', 'veinticinco', 'veintiséis', 'veintisiete', 'veintiocho', 'veintinueve'];
+
+    const decenas = ['', '', '', 'treinta', 'cuarenta', 'cincuenta', 'sesenta', 'setenta', 'ochenta', 'noventa'];
+    const centenas = ['', 'ciento', 'doscientos', 'trescientos', 'cuatrocientos', 'quinientos',
+        'seiscientos', 'setecientos', 'ochocientos', 'novecientos'];
+
+    if (n < 30) return unidades[n];
+
+    if (n < 100) {
+        const d = Math.floor(n / 10);
+        const u = n % 10;
+        return u === 0 ? decenas[d] : decenas[d] + ' y ' + unidades[u];
+    }
+
+    if (n === 100) return 'cien';
+
+    if (n < 1000) {
+        const c = Math.floor(n / 100);
+        const r = n % 100;
+        return centenas[c] + (r > 0 ? ' ' + numberToSpanish(r) : '');
+    }
+
+    if (n < 10000) {
+        const m = Math.floor(n / 1000);
+        const r = n % 1000;
+        const prefix = m === 1 ? 'mil' : numberToSpanish(m) + ' mil';
+        return prefix + (r > 0 ? ' ' + numberToSpanish(r) : '');
+    }
+
+    return String(n);
+}
+
+// Generar una expresión matemática que dé como resultado n
+function generateMathExpression(n) {
+    const type = Math.random();
+    if (type < 0.5) {
+        const a = Math.floor(Math.random() * n);
+        return a + ' + ' + (n - a);
+    } else {
+        const b = Math.floor(Math.random() * 50) + 1;
+        return (n + b) + ' − ' + b;
+    }
+}
+
+// Generar expresiones para todos los números
+function generateMathExpressions() {
+    pieceMathExpressions = pieceNumbers.map(n => generateMathExpression(n));
+    cellMathExpressions = cellNumbers.map(n => generateMathExpression(n));
+}
+
+// Text-to-Speech: pronunciar número en español
+function speakNumber(n) {
+    const text = numberToSpanish(n);
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'es-ES';
+    utterance.rate = 0.85;
+    speechSynthesis.cancel();
+    speechSynthesis.speak(utterance);
+}
+
+// --- Timer ---
+function startTimer() {
+    if (!gameConfig.timerEnabled || gameState.gameOver) return;
+    stopTimer();
+    timerRemaining = gameConfig.timerDuration;
+    updateTimerDisplay();
+    const bar = document.getElementById('timerBar');
+    if (bar) bar.classList.remove('hidden');
+
+    timerInterval = setInterval(() => {
+        timerRemaining--;
+        updateTimerDisplay();
+        if (timerRemaining <= 0) {
+            stopTimer();
+            onTimerExpired();
+        }
+    }, 1000);
+}
+
+function stopTimer() {
+    if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+    }
+}
+
+function updateTimerDisplay() {
+    const fill = document.getElementById('timerFill');
+    const text = document.getElementById('timerText');
+    if (!fill || !text) return;
+    const pct = (timerRemaining / gameConfig.timerDuration) * 100;
+    fill.style.width = pct + '%';
+    fill.className = 'timer-fill' + (pct <= 20 ? ' danger' : pct <= 40 ? ' warning' : '');
+    text.textContent = timerRemaining + 's';
+}
+
+function onTimerExpired() {
+    initAudio();
+    const osc = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+    osc.connect(gain);
+    gain.connect(audioContext.destination);
+    osc.frequency.value = 200;
+    osc.type = 'sawtooth';
+    gain.gain.setValueAtTime(0.2, audioContext.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+    osc.start(audioContext.currentTime);
+    osc.stop(audioContext.currentTime + 0.5);
+
+    if (gameState.phase === 'selectPiece') {
+        const available = gameState.availablePieces
+            .map((p, i) => ({ piece: p, index: i }))
+            .filter(x => !gameState.usedPieces.includes(x.piece));
+        if (available.length > 0) {
+            const pick = available[Math.floor(Math.random() * available.length)];
+            handlePieceClick(pick.index);
+        }
+    } else if (gameState.phase === 'placePiece') {
+        const emptyCells = gameState.board
+            .map((c, i) => c === null ? i : -1)
+            .filter(i => i >= 0);
+        if (emptyCells.length > 0) {
+            const pick = emptyCells[Math.floor(Math.random() * emptyCells.length)];
+            handleCellClick(pick);
+        }
+    }
+}
+
+// --- Spy Mode ---
+function startSpyReveal() {
+    if (!gameConfig.spyMode) return;
+    document.querySelectorAll('.piece-number, .cell-number').forEach(el => {
+        el.classList.remove('spy-hidden');
+        if (el.dataset.originalText) {
+            el.textContent = el.dataset.originalText;
+        }
+    });
+    if (spyTimeout) clearTimeout(spyTimeout);
+    spyTimeout = setTimeout(() => {
+        document.querySelectorAll('.piece-number, .cell-number').forEach(el => {
+            if (!el.closest('.used') && !el.closest('.occupied')) {
+                el.dataset.originalText = el.textContent;
+                el.textContent = '?';
+                el.classList.add('spy-hidden');
+            }
+        });
+    }, 3000);
+}
+
+// --- Number Tooltip (Spanish text) ---
+function showNumberTooltip(element, number) {
+    if (gameConfig.spyMode && element.classList.contains('spy-hidden')) return;
+    let tooltip = document.getElementById('numberTooltip');
+    if (!tooltip) return;
+    tooltip.textContent = numberToSpanish(number);
+    tooltip.classList.add('visible');
+    const rect = element.getBoundingClientRect();
+    tooltip.style.left = (rect.left + rect.width / 2) + 'px';
+    tooltip.style.top = (rect.bottom + 8) + 'px';
+}
+
+function hideNumberTooltip() {
+    const tooltip = document.getElementById('numberTooltip');
+    if (tooltip) tooltip.classList.remove('visible');
 }
 
 // Rotar números aleatorios
@@ -141,6 +335,9 @@ function rotateNumbers() {
         }
     });
     
+    if (gameConfig.mathMode) {
+        generateMathExpressions();
+    }
     updateNumbers();
 }
 
@@ -186,7 +383,8 @@ function updateNumbers() {
     document.querySelectorAll('.piece-wrapper').forEach((wrapper, index) => {
         const numberEl = wrapper.querySelector('.piece-number');
         if (numberEl && !wrapper.classList.contains('used')) {
-            numberEl.textContent = pieceNumbers[index];
+            numberEl.textContent = gameConfig.mathMode ? pieceMathExpressions[index] : pieceNumbers[index];
+            numberEl.dataset.number = pieceNumbers[index];
         }
     });
     
@@ -194,7 +392,8 @@ function updateNumbers() {
     document.querySelectorAll('.cell').forEach((cell, index) => {
         const numberEl = cell.querySelector('.cell-number');
         if (numberEl && !cell.classList.contains('occupied')) {
-            numberEl.textContent = cellNumbers[index];
+            numberEl.textContent = gameConfig.mathMode ? cellMathExpressions[index] : cellNumbers[index];
+            numberEl.dataset.number = cellNumbers[index];
         }
     });
 }
@@ -217,6 +416,7 @@ function renderAvailablePieces() {
         wrapper.appendChild(pieceEl);
         
         // Agregar número
+        const num = pieceNumbers[index] || Math.floor(Math.random() * gameConfig.numberRange) + 1;
         const numberEl = document.createElement('div');
         numberEl.className = 'piece-number';
         if (gameConfig.numberRange === 999) {
@@ -224,8 +424,24 @@ function renderAvailablePieces() {
         } else if (gameConfig.numberRange === 9999) {
             numberEl.classList.add('range-9999');
         }
-        numberEl.textContent = pieceNumbers[index] || Math.floor(Math.random() * gameConfig.numberRange) + 1;
+        numberEl.textContent = gameConfig.mathMode ? (pieceMathExpressions[index] || num) : num;
+        numberEl.dataset.number = num;
+        numberEl.addEventListener('mouseenter', () => showNumberTooltip(numberEl, num));
+        numberEl.addEventListener('mouseleave', hideNumberTooltip);
         wrapper.appendChild(numberEl);
+
+        // Botón TTS
+        const ttsBtn = document.createElement('button');
+        ttsBtn.className = 'tts-btn';
+        ttsBtn.textContent = '🔊';
+        ttsBtn.title = 'Escuchar en español';
+        ttsBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const numEl = wrapper.querySelector('.piece-number');
+            if (numEl && numEl.classList.contains('spy-hidden')) return;
+            speakNumber(num);
+        });
+        wrapper.appendChild(ttsBtn);
         
         // Event listeners para mostrar características
         if (!gameState.usedPieces.includes(piece)) {
@@ -342,6 +558,7 @@ function renderBoard() {
         
         // Agregar número a la casilla si está vacía
         if (gameState.board[i] === null) {
+            const cellNum = cellNumbers[i] || Math.floor(Math.random() * gameConfig.numberRange) + 1;
             const numberEl = document.createElement('div');
             numberEl.className = 'cell-number';
             if (gameConfig.numberRange === 999) {
@@ -349,8 +566,24 @@ function renderBoard() {
             } else if (gameConfig.numberRange === 9999) {
                 numberEl.classList.add('range-9999');
             }
-            numberEl.textContent = cellNumbers[i] || Math.floor(Math.random() * gameConfig.numberRange) + 1;
+            numberEl.textContent = gameConfig.mathMode ? (cellMathExpressions[i] || cellNum) : cellNum;
+            numberEl.dataset.number = cellNum;
+            numberEl.addEventListener('mouseenter', () => showNumberTooltip(numberEl, cellNum));
+            numberEl.addEventListener('mouseleave', hideNumberTooltip);
             cell.appendChild(numberEl);
+
+            // Botón TTS en casilla
+            const ttsBtn = document.createElement('button');
+            ttsBtn.className = 'tts-btn cell-tts';
+            ttsBtn.textContent = '🔊';
+            ttsBtn.title = 'Escuchar en español';
+            ttsBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const numEl = cell.querySelector('.cell-number');
+                if (numEl && numEl.classList.contains('spy-hidden')) return;
+                speakNumber(cellNum);
+            });
+            cell.appendChild(ttsBtn);
             
             cell.addEventListener('click', () => handleCellClick(i));
         } else {
@@ -437,6 +670,8 @@ function handlePieceClick(index) {
     
     updateGameInfo();
     highlightEmptyCells(true);
+    startTimer();
+    startSpyReveal();
 }
 
 // Manejar clic en casilla
@@ -479,6 +714,8 @@ function handleCellClick(index) {
     renderBoard();
     updateGameInfo();
     updateUndoButton();
+    startTimer();
+    startSpyReveal();
 }
 
 // Resaltar casillas vacías
@@ -520,7 +757,9 @@ function saveState() {
         phase: gameState.phase,
         gameOver: gameState.gameOver,
         pieceNumbers: [...pieceNumbers],
-        cellNumbers: [...cellNumbers]
+        cellNumbers: [...cellNumbers],
+        pieceMathExpressions: [...pieceMathExpressions],
+        cellMathExpressions: [...cellMathExpressions]
     };
     moveHistory.push(state);
     updateUndoButton();
@@ -541,6 +780,8 @@ function undoLastMove() {
     gameState.gameOver = previousState.gameOver;
     pieceNumbers = [...previousState.pieceNumbers];
     cellNumbers = [...previousState.cellNumbers];
+    pieceMathExpressions = [...(previousState.pieceMathExpressions || [])];
+    cellMathExpressions = [...(previousState.cellMathExpressions || [])];
     
     // Cerrar modal si estaba abierto
     const modal = document.getElementById('winModal');
@@ -557,6 +798,8 @@ function undoLastMove() {
     if (gameState.phase === 'placePiece') {
         highlightEmptyCells(true);
     }
+    startTimer();
+    startSpyReveal();
 }
 
 // Actualizar estado del botón de deshacer
@@ -629,6 +872,7 @@ function checkLine(indices) {
 // Finalizar juego
 function endGame(draw = false) {
     gameState.gameOver = true;
+    stopTimer();
     
     const modal = document.getElementById('winModal');
     const message = document.getElementById('winMessage');
@@ -666,10 +910,15 @@ document.getElementById('undoButton').addEventListener('click', undoLastMove);
 document.getElementById('startGameButton').addEventListener('click', () => {
     const boardSize = parseInt(document.getElementById('boardSize').value);
     const numberRange = parseInt(document.getElementById('numberRange').value);
+    const timerDuration = parseInt(document.getElementById('timerDuration').value);
     
     gameConfig.boardSize = boardSize;
     gameConfig.numberRange = numberRange;
     gameConfig.winLength = boardSize;
+    gameConfig.mathMode = document.getElementById('mathMode').checked;
+    gameConfig.spyMode = document.getElementById('spyMode').checked;
+    gameConfig.timerEnabled = timerDuration > 0;
+    gameConfig.timerDuration = timerDuration || 30;
     
     const settingsModal = document.getElementById('settingsModal');
     settingsModal.classList.add('hidden');
