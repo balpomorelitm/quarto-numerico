@@ -612,12 +612,6 @@ body.dark-mode .piece-shape.light {
 }
 
 /* Tablero */
-.board-section {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-}
-
 .board {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
@@ -1111,4 +1105,210 @@ footer {
     color: var(--text-light);
     width: 100%;
     padding-left: 28px;
+}
+
+/* Writing Mode */
+.writing-mode-container {
+    margin-top: 20px;
+    padding: 20px;
+    background: var(--primary-bg);
+    border: 2px solid var(--border-color);
+    border-radius: 12px;
+    max-width: 460px;
+    margin-left: auto;
+    margin-right: auto;
+    transition: all 0.3s;
+}
+
+.writing-mode-container.hidden {
+    display: none;
+}
+
+.writing-label {
+    display: block;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--accent-color);
+    margin-bottom: 10px;
+    text-align: center;
+}
+
+.writing-input-row {
+    display: flex;
+    gap: 10px;
+}
+
+.writing-input {
+    flex: 1;
+    padding: 12px 16px;
+    font-size: 1.1rem;
+    border: 2px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--secondary-bg);
+    color: var(--text-color);
+    outline: none;
+    transition: all 0.3s;
+}
+
+.writing-input:focus {
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 3px rgba(44, 62, 80, 0.1);
+}
+
+.btn-writing-submit {
+    padding: 12px 20px;
+    font-size: 1.2rem;
+    border: 2px solid var(--accent-color);
+    background: var(--accent-color);
+    color: white;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.3s;
+    font-weight: 700;
+}
+
+.btn-writing-submit:hover {
+    background: var(--accent-light);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow);
+}
+
+.writing-feedback {
+    text-align: center;
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin-top: 8px;
+    min-height: 1.3em;
+    transition: all 0.3s;
+}
+
+.writing-feedback.correct {
+    color: #27ae60;
+}
+
+.writing-feedback.incorrect {
+    color: #e74c3c;
+    animation: shake 0.4s ease;
+}
+
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-6px); }
+    75% { transform: translateX(6px); }
+}
+
+/* Win Modal - expanded for summary */
+.win-modal {
+    max-width: 650px;
+}
+
+/* Game Summary */
+.game-summary {
+    text-align: left;
+    margin: 20px 0;
+}
+
+.summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.summary-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 12px;
+    background: var(--primary-bg);
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+}
+
+.summary-icon {
+    font-size: 1.4rem;
+    margin-bottom: 4px;
+}
+
+.summary-label {
+    font-size: 0.75rem;
+    color: var(--text-light);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.summary-value {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: var(--accent-color);
+}
+
+.summary-slow, .summary-history {
+    margin-top: 14px;
+    padding: 14px;
+    background: var(--primary-bg);
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+}
+
+.summary-slow h4, .summary-history h4 {
+    font-size: 0.95rem;
+    margin-bottom: 10px;
+    color: var(--accent-color);
+}
+
+.slow-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.slow-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 10px;
+    background: var(--secondary-bg);
+    border-radius: 6px;
+}
+
+.slow-number {
+    font-weight: 700;
+    font-size: 1.1rem;
+    color: var(--accent-color);
+    min-width: 50px;
+}
+
+.slow-spanish {
+    flex: 1;
+    font-style: italic;
+    color: var(--text-light);
+    margin: 0 12px;
+}
+
+.slow-time {
+    font-weight: 600;
+    color: var(--player2-color);
+    font-size: 0.9rem;
+}
+
+.history-stats {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    justify-content: center;
+    font-size: 0.95rem;
+    color: var(--text-color);
+}
+
+.history-stats strong {
+    color: var(--accent-color);
+}
+
+/* Board section centering for writing mode */
+.board-section {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
 }

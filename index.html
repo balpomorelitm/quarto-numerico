@@ -76,6 +76,15 @@
                         <span id="timerText" class="timer-text">30s</span>
                     </div>
                     <div id="gameBoard" class="board"></div>
+                    <!-- Writing Mode Input -->
+                    <div id="writingModeContainer" class="writing-mode-container hidden">
+                        <label id="writingLabel" class="writing-label">Escribe el número en español</label>
+                        <div class="writing-input-row">
+                            <input type="text" id="writingInput" class="writing-input" placeholder="ej: cuarenta y siete" autocomplete="off" spellcheck="false">
+                            <button id="writingSubmit" class="btn-writing-submit">✓</button>
+                        </div>
+                        <div id="writingFeedback" class="writing-feedback"></div>
+                    </div>
                 </section>
             </div>
         </main>
@@ -132,7 +141,21 @@
                             <span>🕵️ Spy Mode</span>
                             <span class="mode-desc">Numbers disappear after 3 seconds</span>
                         </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="writingMode">
+                            <span>⌨️ Writing Mode</span>
+                            <span class="mode-desc">Type numbers in Spanish instead of clicking</span>
+                        </label>
                     </div>
+                </div>
+                <div class="settings-group">
+                    <label for="aiDifficulty">🤖 Play vs AI:</label>
+                    <select id="aiDifficulty" class="settings-select">
+                        <option value="off">Off (2 players)</option>
+                        <option value="easy">Easy</option>
+                        <option value="medium">Medium</option>
+                        <option value="hard">Hard</option>
+                    </select>
                 </div>
                 <div class="settings-buttons">
                     <button id="startGameButton" class="btn-primary">Start Game</button>
@@ -143,9 +166,10 @@
 
         <!-- Win Modal -->
         <div id="winModal" class="modal hidden">
-            <div class="modal-content">
+            <div class="modal-content win-modal">
                 <h2>Victory!</h2>
                 <p id="winMessage"></p>
+                <div id="gameSummary" class="game-summary"></div>
                 <button id="newGameButton" class="btn-primary">New Game</button>
             </div>
         </div>

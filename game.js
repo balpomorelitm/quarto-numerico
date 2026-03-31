@@ -20,7 +20,21 @@ const gameConfig = {
     mathMode: false,
     spyMode: false,
     timerEnabled: false,
-    timerDuration: 30
+    timerDuration: 30,
+    writingMode: false,
+    aiEnabled: false,
+    aiDifficulty: 'off' // 'off', 'easy', 'medium', 'hard'
+};
+
+// Estadísticas de la partida
+const gameStats = {
+    turnStartTime: null,
+    turnTimes: [],
+    totalTurns: 0,
+    player1Turns: 0,
+    player2Turns: 0,
+    startTime: null,
+    numberSelectionTimes: [] // {number, time, player}
 };
 
 // Audio context para efectos de sonido
@@ -107,6 +121,15 @@ function initGame() {
     moveHistory.length = 0;
     updateUndoButton();
 
+    // Reset stats
+    gameStats.turnStartTime = Date.now();
+    gameStats.turnTimes = [];
+    gameStats.totalTurns = 0;
+    gameStats.player1Turns = 0;
+    gameStats.player2Turns = 0;
+    gameStats.startTime = Date.now();
+    gameStats.numberSelectionTimes = [];
+
     // Generar números aleatorios
     generateRandomNumbers();
 
@@ -126,6 +149,12 @@ function initGame() {
 
     // Spy mode
     startSpyReveal();
+
+    // Writing mode input
+    updateWritingModeUI();
+
+    // AI: if AI is player 1 first turn (shouldn't normally happen, AI is player 2)
+    // AI plays as Player 2 by default
 }
 
 // Generar números aleatorios únicos
@@ -317,6 +346,290 @@ function showNumberTooltip(element, number) {
 function hideNumberTooltip() {
     const tooltip = document.getElementById('numberTooltip');
     if (tooltip) tooltip.classList.remove('visible');
+}
+
+// --- Writing Mode ---
+function updateWritingModeUI() {
+    const container = document.getElementById('writingModeContainer');
+    if (!container) return;
+    if (!gameConfig.writingMode || gameState.gameOver) {
+        container.classList.add('hidden');
+        return;
+    }
+    container.classList.remove('hidden');
+    const input = document.getElementById('writingInput');
+    const label = document.getElementById('writingLabel');
+    if (gameState.phase === 'selectPiece') {
+        label.textContent = `Player ${gameState.currentPlayer}: Escribe el número de la pieza en español`;
+    } else {
+        label.textContent = `Player ${gameState.currentPlayer}: Escribe el número de la casilla en español`;
+    }
+    input.value = '';
+    input.focus();
+}
+
+function normalizeSpanishText(text) {
+    return text.toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove accents
+        .replace(/[^a-z\s]/g, '') // remove non-alpha
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function handleWritingSubmit() {
+    const input = document.getElementById('writingInput');
+    if (!input) return;
+    const userText = normalizeSpanishText(input.value);
+    if (!userText) return;
+
+    const feedback = document.getElementById('writingFeedback');
+
+    if (gameState.phase === 'selectPiece') {
+        // Try to match against available piece numbers
+        let matchedIndex = -1;
+        for (let i = 0; i < pieceNumbers.length; i++) {
+            if (gameState.usedPieces.includes(gameState.availablePieces[i])) continue;
+            const expected = normalizeSpanishText(numberToSpanish(pieceNumbers[i]));
+            if (userText === expected) {
+                matchedIndex = i;
+                break;
+            }
+        }
+        if (matchedIndex >= 0) {
+            feedback.textContent = '✓ ¡Correcto!';
+            feedback.className = 'writing-feedback correct';
+            setTimeout(() => { feedback.textContent = ''; feedback.className = 'writing-feedback'; }, 1500);
+            handlePieceClick(matchedIndex);
+        } else {
+            feedback.textContent = '✗ Número no reconocido. Intenta de nuevo.';
+            feedback.className = 'writing-feedback incorrect';
+            input.value = '';
+            input.focus();
+        }
+    } else if (gameState.phase === 'placePiece') {
+        // Try to match against cell numbers
+        let matchedIndex = -1;
+        for (let i = 0; i < cellNumbers.length; i++) {
+            if (gameState.board[i] !== null) continue;
+            const expected = normalizeSpanishText(numberToSpanish(cellNumbers[i]));
+            if (userText === expected) {
+                matchedIndex = i;
+                break;
+            }
+        }
+        if (matchedIndex >= 0) {
+            feedback.textContent = '✓ ¡Correcto!';
+            feedback.className = 'writing-feedback correct';
+            setTimeout(() => { feedback.textContent = ''; feedback.className = 'writing-feedback'; }, 1500);
+            handleCellClick(matchedIndex);
+        } else {
+            feedback.textContent = '✗ Número no reconocido. Intenta de nuevo.';
+            feedback.className = 'writing-feedback incorrect';
+            input.value = '';
+            input.focus();
+        }
+    }
+}
+
+// --- AI (Solitario) ---
+function isAITurn() {
+    return gameConfig.aiEnabled && gameState.currentPlayer === 2 && !gameState.gameOver;
+}
+
+function scheduleAIMove() {
+    if (!isAITurn()) return;
+    // Small delay so the human sees what happened
+    setTimeout(() => {
+        if (!isAITurn()) return;
+        if (gameState.phase === 'selectPiece') {
+            aiSelectPiece();
+        } else if (gameState.phase === 'placePiece') {
+            aiPlacePiece();
+        }
+    }, 800);
+}
+
+function aiSelectPiece() {
+    const available = gameState.availablePieces
+        .map((p, i) => ({ piece: p, index: i }))
+        .filter(x => !gameState.usedPieces.includes(x.piece));
+    if (available.length === 0) return;
+
+    let pick;
+    if (gameConfig.aiDifficulty === 'easy') {
+        pick = available[Math.floor(Math.random() * available.length)];
+    } else if (gameConfig.aiDifficulty === 'medium') {
+        // Avoid giving pieces that could complete a line
+        pick = aiSelectPieceMedium(available) || available[Math.floor(Math.random() * available.length)];
+    } else {
+        // Hard: try harder to avoid giving winning pieces
+        pick = aiSelectPieceHard(available) || available[Math.floor(Math.random() * available.length)];
+    }
+    handlePieceClick(pick.index);
+}
+
+function aiPlacePiece() {
+    const emptyCells = gameState.board
+        .map((c, i) => c === null ? i : -1)
+        .filter(i => i >= 0);
+    if (emptyCells.length === 0) return;
+
+    let cellIndex;
+    if (gameConfig.aiDifficulty === 'easy') {
+        cellIndex = emptyCells[Math.floor(Math.random() * emptyCells.length)];
+    } else if (gameConfig.aiDifficulty === 'medium') {
+        cellIndex = aiFindWinningCell(emptyCells) || aiFindStrategicCell(emptyCells) || emptyCells[Math.floor(Math.random() * emptyCells.length)];
+    } else {
+        cellIndex = aiFindWinningCell(emptyCells) || aiFindBlockingCell(emptyCells) || aiFindStrategicCell(emptyCells) || emptyCells[Math.floor(Math.random() * emptyCells.length)];
+    }
+    handleCellClick(cellIndex);
+}
+
+// AI: find a cell that wins immediately
+function aiFindWinningCell(emptyCells) {
+    const piece = gameState.selectedPiece.piece;
+    for (const idx of emptyCells) {
+        gameState.board[idx] = piece;
+        if (checkWin()) {
+            gameState.board[idx] = null;
+            return idx;
+        }
+        gameState.board[idx] = null;
+    }
+    return null;
+}
+
+// AI: find cell that prevents opponent from winning easily
+function aiFindBlockingCell(emptyCells) {
+    // Place in lines that have the most pieces of the same attribute
+    const size = gameConfig.boardSize;
+    const lines = getAllLines(size);
+    let bestCell = null;
+    let bestScore = -1;
+
+    for (const idx of emptyCells) {
+        let score = 0;
+        for (const line of lines) {
+            if (!line.includes(idx)) continue;
+            const piecesInLine = line.filter(i => gameState.board[i] !== null).length;
+            if (piecesInLine >= size - 2) {
+                score += piecesInLine * 2;
+            }
+        }
+        // Prefer center cells
+        const row = Math.floor(idx / size);
+        const col = idx % size;
+        if (row > 0 && row < size - 1 && col > 0 && col < size - 1) score += 1;
+        if (score > bestScore) {
+            bestScore = score;
+            bestCell = idx;
+        }
+    }
+    return bestScore > 0 ? bestCell : null;
+}
+
+function aiFindStrategicCell(emptyCells) {
+    // Prefer center, then corners
+    const size = gameConfig.boardSize;
+    const center = Math.floor(size / 2);
+    const centerIdx = center * size + center;
+    if (emptyCells.includes(centerIdx)) return centerIdx;
+
+    const corners = [0, size - 1, (size - 1) * size, size * size - 1];
+    const availCorners = corners.filter(c => emptyCells.includes(c));
+    if (availCorners.length > 0) return availCorners[Math.floor(Math.random() * availCorners.length)];
+
+    return null;
+}
+
+function getAllLines(size) {
+    const lines = [];
+    // Rows
+    for (let r = 0; r < size; r++) {
+        const line = [];
+        for (let c = 0; c < size; c++) line.push(r * size + c);
+        lines.push(line);
+    }
+    // Columns
+    for (let c = 0; c < size; c++) {
+        const line = [];
+        for (let r = 0; r < size; r++) line.push(r * size + c);
+        lines.push(line);
+    }
+    // Diagonals
+    const d1 = [], d2 = [];
+    for (let i = 0; i < size; i++) {
+        d1.push(i * size + i);
+        d2.push(i * size + (size - 1 - i));
+    }
+    lines.push(d1, d2);
+    return lines;
+}
+
+// Medium: avoid giving pieces that have many attributes in common with existing lines
+function aiSelectPieceMedium(available) {
+    const size = gameConfig.boardSize;
+    const lines = getAllLines(size);
+    const safePieces = available.filter(({ piece }) => {
+        return !wouldPieceBeRisky(piece, lines, size - 1);
+    });
+    if (safePieces.length > 0) return safePieces[Math.floor(Math.random() * safePieces.length)];
+    return null;
+}
+
+// Hard: even more careful piece selection
+function aiSelectPieceHard(available) {
+    const size = gameConfig.boardSize;
+    const lines = getAllLines(size);
+
+    // First try: pieces safe even at size-2
+    let safePieces = available.filter(({ piece }) => {
+        return !wouldPieceBeRisky(piece, lines, size - 2);
+    });
+    if (safePieces.length > 0) return safePieces[Math.floor(Math.random() * safePieces.length)];
+
+    // Fallback: pieces safe at size-1
+    safePieces = available.filter(({ piece }) => {
+        return !wouldPieceBeRisky(piece, lines, size - 1);
+    });
+    if (safePieces.length > 0) return safePieces[Math.floor(Math.random() * safePieces.length)];
+    return null;
+}
+
+// Check if giving this piece could let opponent complete a line
+function wouldPieceBeRisky(piece, lines, threshold) {
+    const attributes = ['tall', 'dark', 'square', 'solid'];
+    for (const line of lines) {
+        const piecesInLine = line.filter(i => gameState.board[i] !== null);
+        if (piecesInLine.length < threshold) continue;
+        const emptyCellsInLine = line.filter(i => gameState.board[i] === null);
+        if (emptyCellsInLine.length !== 1) continue; // only 1 slot left
+
+        const linePieces = piecesInLine.map(i => gameState.board[i]);
+        const allPieces = [...linePieces, piece];
+
+        for (const attr of attributes) {
+            const allTrue = allPieces.every(p => p[attr] === true);
+            const allFalse = allPieces.every(p => p[attr] === false);
+            if (allTrue || allFalse) return true;
+        }
+    }
+    return false;
+}
+
+// --- Game Stats Tracking ---
+function recordTurnTime() {
+    if (!gameStats.turnStartTime) return;
+    const elapsed = (Date.now() - gameStats.turnStartTime) / 1000;
+    gameStats.turnTimes.push({
+        player: gameState.currentPlayer,
+        time: elapsed,
+        phase: gameState.phase
+    });
+    gameStats.totalTurns++;
+    if (gameState.currentPlayer === 1) gameStats.player1Turns++;
+    else gameStats.player2Turns++;
+    gameStats.turnStartTime = Date.now();
 }
 
 // Rotar números aleatorios
@@ -652,6 +965,16 @@ function handlePieceClick(index) {
         return;
     }
     
+    // Record turn time
+    recordTurnTime();
+
+    // Track number selection
+    gameStats.numberSelectionTimes.push({
+        number: pieceNumbers[index],
+        time: gameStats.turnTimes.length > 0 ? gameStats.turnTimes[gameStats.turnTimes.length - 1].time : 0,
+        player: gameState.currentPlayer
+    });
+    
     // Deseleccionar anteriores
     document.querySelectorAll('.piece-wrapper.selected').forEach(el => {
         el.classList.remove('selected');
@@ -672,6 +995,10 @@ function handlePieceClick(index) {
     highlightEmptyCells(true);
     startTimer();
     startSpyReveal();
+    updateWritingModeUI();
+
+    // AI turn to place piece
+    scheduleAIMove();
 }
 
 // Manejar clic en casilla
@@ -680,6 +1007,9 @@ function handleCellClick(index) {
     if (gameState.phase !== 'placePiece') return;
     if (gameState.board[index] !== null) return;
     
+    // Record turn time
+    recordTurnTime();
+
     // Guardar estado antes del movimiento
     saveState();
     
@@ -716,6 +1046,10 @@ function handleCellClick(index) {
     updateUndoButton();
     startTimer();
     startSpyReveal();
+    updateWritingModeUI();
+
+    // AI turn to select piece
+    scheduleAIMove();
 }
 
 // Resaltar casillas vacías
@@ -884,8 +1218,18 @@ function endGame(draw = false) {
         // Lanzar confeti del color del jugador
         createConfetti(gameState.currentPlayer);
     }
+
+    // Hide writing mode
+    const wc = document.getElementById('writingModeContainer');
+    if (wc) wc.classList.add('hidden');
+
+    // Build post-game summary
+    buildGameSummary(draw);
     
     modal.classList.remove('hidden');
+
+    // Save to persistent stats
+    saveMatchToHistory(draw);
 }
 
 // Reiniciar juego
@@ -893,6 +1237,80 @@ function resetGame() {
     const modal = document.getElementById('winModal');
     modal.classList.add('hidden');
     initGame();
+}
+
+// --- Post-game Summary ---
+function buildGameSummary(draw) {
+    const container = document.getElementById('gameSummary');
+    if (!container) return;
+
+    const totalTime = ((Date.now() - gameStats.startTime) / 1000).toFixed(0);
+    const minutes = Math.floor(totalTime / 60);
+    const seconds = totalTime % 60;
+    const timeStr = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+
+    const humanTurns = gameStats.turnTimes.filter(t => !gameConfig.aiEnabled || t.player === 1);
+    const avgTime = humanTurns.length > 0
+        ? (humanTurns.reduce((s, t) => s + t.time, 0) / humanTurns.length).toFixed(1)
+        : '0';
+
+    // Slowest numbers (top 3)
+    const sorted = [...gameStats.numberSelectionTimes]
+        .filter(t => !gameConfig.aiEnabled || t.player === 1)
+        .sort((a, b) => b.time - a.time);
+    const slowest = sorted.slice(0, 3);
+
+    let html = '<div class="summary-grid">';
+    html += `<div class="summary-stat"><span class="summary-icon">⏱</span><span class="summary-label">Total time</span><span class="summary-value">${timeStr}</span></div>`;
+    html += `<div class="summary-stat"><span class="summary-icon">🔄</span><span class="summary-label">Total turns</span><span class="summary-value">${Math.ceil(gameStats.totalTurns / 2)}</span></div>`;
+    html += `<div class="summary-stat"><span class="summary-icon">⚡</span><span class="summary-label">Avg. time/turn</span><span class="summary-value">${avgTime}s</span></div>`;
+
+    if (gameConfig.aiEnabled) {
+        html += `<div class="summary-stat"><span class="summary-icon">🤖</span><span class="summary-label">AI difficulty</span><span class="summary-value">${gameConfig.aiDifficulty}</span></div>`;
+    }
+    html += '</div>';
+
+    if (slowest.length > 0) {
+        html += '<div class="summary-slow"><h4>🐢 Slowest numbers</h4><div class="slow-list">';
+        slowest.forEach(s => {
+            html += `<div class="slow-item"><span class="slow-number">${s.number}</span><span class="slow-spanish">${numberToSpanish(s.number)}</span><span class="slow-time">${s.time.toFixed(1)}s</span></div>`;
+        });
+        html += '</div></div>';
+    }
+
+    // Streak / history
+    const history = JSON.parse(localStorage.getItem('quartoHistory') || '[]');
+    if (history.length > 0) {
+        const wins = history.filter(h => h.winner === 1).length;
+        const losses = history.filter(h => h.winner === 2).length;
+        const draws = history.filter(h => h.winner === 0).length;
+        // Current streak
+        let streak = 0;
+        for (let i = history.length - 1; i >= 0; i--) {
+            if (history[i].winner === 1) streak++;
+            else break;
+        }
+        html += '<div class="summary-history"><h4>📊 Match history</h4>';
+        html += `<div class="history-stats"><span>Wins: <strong>${wins}</strong></span><span>Losses: <strong>${losses}</strong></span><span>Draws: <strong>${draws}</strong></span>`;
+        if (streak > 1) html += `<span>🔥 Streak: <strong>${streak}</strong></span>`;
+        html += '</div></div>';
+    }
+
+    container.innerHTML = html;
+}
+
+function saveMatchToHistory(draw) {
+    const history = JSON.parse(localStorage.getItem('quartoHistory') || '[]');
+    history.push({
+        date: new Date().toISOString(),
+        winner: draw ? 0 : gameState.currentPlayer,
+        turns: Math.ceil(gameStats.totalTurns / 2),
+        totalTime: ((Date.now() - gameStats.startTime) / 1000).toFixed(0),
+        ai: gameConfig.aiEnabled ? gameConfig.aiDifficulty : null
+    });
+    // Keep last 50 games
+    while (history.length > 50) history.shift();
+    localStorage.setItem('quartoHistory', JSON.stringify(history));
 }
 
 // Event listeners
@@ -911,14 +1329,18 @@ document.getElementById('startGameButton').addEventListener('click', () => {
     const boardSize = parseInt(document.getElementById('boardSize').value);
     const numberRange = parseInt(document.getElementById('numberRange').value);
     const timerDuration = parseInt(document.getElementById('timerDuration').value);
+    const aiDifficulty = document.getElementById('aiDifficulty').value;
     
     gameConfig.boardSize = boardSize;
     gameConfig.numberRange = numberRange;
     gameConfig.winLength = boardSize;
     gameConfig.mathMode = document.getElementById('mathMode').checked;
     gameConfig.spyMode = document.getElementById('spyMode').checked;
+    gameConfig.writingMode = document.getElementById('writingMode').checked;
     gameConfig.timerEnabled = timerDuration > 0;
     gameConfig.timerDuration = timerDuration || 30;
+    gameConfig.aiEnabled = aiDifficulty !== 'off';
+    gameConfig.aiDifficulty = aiDifficulty;
     
     const settingsModal = document.getElementById('settingsModal');
     settingsModal.classList.add('hidden');
@@ -983,4 +1405,21 @@ document.addEventListener('click', (e) => {
 });
 
 // Iniciar juego al cargar
-window.addEventListener('DOMContentLoaded', initGame);
+window.addEventListener('DOMContentLoaded', () => {
+    initGame();
+
+    // Writing mode event listeners
+    const writingSubmit = document.getElementById('writingSubmit');
+    const writingInput = document.getElementById('writingInput');
+    if (writingSubmit) {
+        writingSubmit.addEventListener('click', handleWritingSubmit);
+    }
+    if (writingInput) {
+        writingInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                handleWritingSubmit();
+            }
+        });
+    }
+});
